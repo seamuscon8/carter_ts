@@ -1,9 +1,17 @@
+export const appointmentTimes = [
+  "9:00 AM",
+  "10:00 AM",
+  "11:00 AM",
+  "1:00 PM",
+  "2:00 PM",
+  "3:00 PM",
+  "4:00 PM",
+  "5:00 PM",
+];
+
 export type FormValues = {
   customerName: string;
-  customerEmail: string;
   customerPhone: string;
-  service: string;
-  barberName: string;
   appointmentDate: string;
   appointmentTime: string;
 };
@@ -14,10 +22,7 @@ export type FormErrors = Partial<Record<FormFieldName, string>>;
 
 export const initialValues: FormValues = {
   customerName: "",
-  customerEmail: "",
   customerPhone: "",
-  service: "",
-  barberName: "",
   appointmentDate: "",
   appointmentTime: "",
 };
@@ -25,20 +30,37 @@ export const initialValues: FormValues = {
 export function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {};
 
-  (Object.keys(values) as FormFieldName[]).forEach((field) => {
+  (Object.keys(initialValues) as FormFieldName[]).forEach((field) => {
     if (!values[field].trim()) {
       errors[field] = "This field is required.";
     }
   });
 
-  if (values.customerEmail && !/^\S+@\S+\.\S+$/.test(values.customerEmail)) {
-    errors.customerEmail = "Enter a valid email address.";
+  if (values.customerName.trim().length > 30) {
+    errors.customerName = "Name cannot exceed 30 characters.";
   }
 
   const phoneDigits = values.customerPhone.replace(/\D/g, "");
 
-  if (values.customerPhone && phoneDigits.length !== 10) {
+  if (values.customerPhone.trim() && phoneDigits.length !== 10) {
     errors.customerPhone = "Enter a valid 10-digit phone number.";
+  }
+
+  if (values.appointmentDate) {
+    const date = values.appointmentDate;
+    const parsed = new Date(`${date}T00:00:00.000Z`);
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== date
+    ) {
+      errors.appointmentDate = "Select a valid date.";
+    }
+  }
+
+  if (values.appointmentTime && !appointmentTimes.includes(values.appointmentTime)) {
+    errors.appointmentTime = "Select a valid time.";
   }
 
   return errors;

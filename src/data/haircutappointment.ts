@@ -1,15 +1,15 @@
 export interface HaircutAppointment {
   appointmentNumber: number;
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   customerPhone: string;
   appointmentDate: Date;
   appointmentTime: string;
-  service: string;
-  barberId: number;
-  barberName: string;
+  service?: string;
+  barberId?: number;
+  barberName?: string;
   status: "scheduled" | "completed" | "cancelled";
-  price: number;
+  price?: number;
 }
 
 export const mockAppointments: HaircutAppointment[] = [

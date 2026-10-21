@@ -1,67 +1,72 @@
 "use client";
-import React from "react";
-import { type ChangeEvent, type FormEvent, useMemo, useState, useEffect } from "react";
-import FormField from "./FormField";
-import Navbar from "@/components/Navbar";
-import type { Barber } from "@/schemas/barberSchema";
-import styles from "./book-now.module.css";
-import type { HaircutAppointment } from "@/data/haircutappointment";
-import { initialValues, validate, type FormErrors, type FormFieldName, type FormValues } from "./appointmentValidation";
 
-const appointmentTimes = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"];
+import { useState, type ChangeEvent, type FormEvent } from "react";
+import Navbar from "@/components/Navbar";
+import FormField from "./FormField";
+import AppointmentCalendar from "./AppointmentCalendar";
+import {
+  appointmentTimes,
+  initialValues,
+  validate,
+  type FormValues,
+  type FormErrors,
+  type FormFieldName,
+} from "./appointmentValidation";
+import styles from "./book-now.module.css";
+
+type BookingConfirmation = {
+  customerName: string;
+  customerPhone: string;
+  appointmentDate: string;
+  appointmentTime: string;
+};
 
 export default function BookNowPage() {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [submittedAppointment, setSubmittedAppointment] = useState<HaircutAppointment | null>(null);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedAppointment, setSubmittedAppointment] = useState<BookingConfirmation | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function fetchBarbers() {
-      try {
-        const response = await fetch("/api/barbers", {
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to load barbers.");
-        }
-
-        const data: Barber[] = await response.json();
-
-        if (!controller.signal.aborted) {
-          setBarbers(data);
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setSubmitError("Unable to load barbers.");
-        }
-      }
-    }
-
-    void fetchBarbers();
-    return () => controller.abort();
-  }, []);
-
-  const selectedBarber = useMemo(
-    () => barbers.find((barber) => barber.name === values.barberName),
-    [barbers, values.barberName],
-  );
-
-  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = event.target;
-    const field = name as FormFieldName;
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const field = event.target.name as FormFieldName;
+    const value = event.target.value;
 
     setValues((current) => ({
       ...current,
       [field]: value,
-      ...(field === "barberName" ? { service: "" } : {}),
     }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+
+    setErrors((current) => ({
+      ...current,
+      [field]: undefined,
+    }));
+  };
+
+  const handleDateChange = (date: string) => {
+    setValues((current) => ({
+      ...current,
+      appointmentDate: date,
+      appointmentTime: "",
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      appointmentDate: undefined,
+      appointmentTime: undefined,
+    }));
+  };
+
+  const handleTimeChange = (time: string) => {
+    setValues((current) => ({
+      ...current,
+      appointmentTime: time,
+    }));
+
+    setErrors((current) => ({
+      ...current,
+      appointmentTime: undefined,
+    }));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -72,16 +77,9 @@ export default function BookNowPage() {
     setSubmitError(null);
 
     const validationErrors = validate(values);
+    setErrors(validationErrors);
 
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
-    if (!selectedBarber) {
-      setSubmitError("Please select a valid barber.");
-      return;
-    }
+    if (Object.keys(validationErrors).length > 0) return;
 
     setIsSubmitting(true);
 
@@ -93,14 +91,9 @@ export default function BookNowPage() {
         },
         body: JSON.stringify({
           customerName: values.customerName.trim(),
-          customerEmail: values.customerEmail.trim(),
           customerPhone: values.customerPhone.trim(),
           appointmentDate: values.appointmentDate,
           appointmentTime: values.appointmentTime,
-          service: values.service,
-          barberId: selectedBarber.id,
-          barberName: selectedBarber.name,
-          price: 0,
         }),
       });
 
@@ -112,14 +105,23 @@ export default function BookNowPage() {
       }
 
       setSubmittedAppointment({
-        ...data,
-        appointmentDate: new Date(data.appointmentDate),
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        appointmentDate: data.appointmentDate,
+        appointmentTime: data.appointmentTime,
       });
     } catch {
       setSubmitError("Could not reach the server. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const resetForm = () => {
+    setValues({ ...initialValues });
+    setErrors({});
+    setSubmitError(null);
+    setSubmittedAppointment(null);
   };
 
   const errorProps = (field: FormFieldName) => ({
@@ -131,136 +133,111 @@ export default function BookNowPage() {
   return (
     <main className={styles.page}>
       <Navbar />
+
       <section className={styles.content} aria-labelledby="book-now-heading">
         <p className={styles.eyebrow}>Appointments</p>
+
         <h1 className={styles.heading} id="book-now-heading">
           Book your next cut.
         </h1>
-        <p className={styles.intro}>
-          Choose your service, barber, and preferred time. We&apos;ll confirm your request shortly.
-        </p>
+
+        <p className={styles.intro}>Enter your name and phone number, then choose a date and time.</p>
 
         {submittedAppointment ? (
           <div className={styles.confirmation} role="status">
-            <h2>Appointment request received!</h2>
-            <p>Thanks, {submittedAppointment.customerName}. Your appointment request has been submitted.</p>
+            <h2>Appointment booked!</h2>
+
+            <p>Thanks, {submittedAppointment.customerName}. Your appointment has been booked.</p>
+
             <div className={styles.details}>
               <span>
-                <strong>{submittedAppointment.service}</strong> with {submittedAppointment.barberName}
+                {new Date(submittedAppointment.appointmentDate).toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                  timeZone: "UTC",
+                })}
+                {" at "}
+                {submittedAppointment.appointmentTime}
               </span>
-              <span>
-                {submittedAppointment.appointmentDate.toLocaleDateString()} at {submittedAppointment.appointmentTime}
-              </span>
+
+              <span>Phone: {submittedAppointment.customerPhone}</span>
             </div>
-            <button className={styles.resetButton} type="button" onClick={() => setSubmittedAppointment(null)}>
+
+            <button className={styles.resetButton} type="button" onClick={resetForm}>
               Book another appointment
             </button>
           </div>
         ) : (
           <form className={styles.form} noValidate onSubmit={handleSubmit}>
-            <div className={styles.grid}>
-              <div className={styles.fullWidth}>
-                <FormField error={errors.customerName} htmlFor="customerName" label="Customer name">
+            <fieldset
+              disabled={isSubmitting}
+              style={{
+                border: 0,
+                padding: 0,
+                margin: 0,
+                minWidth: 0,
+              }}
+            >
+              <legend
+                style={{
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  overflow: "hidden",
+                  clipPath: "inset(50%)",
+                }}
+              >
+                Booking details
+              </legend>
+
+              <div className={styles.grid}>
+                <FormField error={errors.customerName} htmlFor="customerName" label="Name">
                   <input
                     {...errorProps("customerName")}
                     id="customerName"
                     name="customerName"
-                    onChange={handleChange}
+                    type="text"
+                    autoComplete="name"
+                    maxLength={30}
+                    required
                     value={values.customerName}
+                    onChange={handleChange}
                   />
                 </FormField>
+
+                <FormField error={errors.customerPhone} htmlFor="customerPhone" label="Phone number">
+                  <input
+                    {...errorProps("customerPhone")}
+                    id="customerPhone"
+                    name="customerPhone"
+                    type="tel"
+                    autoComplete="tel"
+                    required
+                    placeholder="(555) 123-4567"
+                    value={values.customerPhone}
+                    onChange={handleChange}
+                  />
+                </FormField>
+
+                <div className={styles.fullWidth}>
+                  <AppointmentCalendar
+                    date={values.appointmentDate}
+                    time={values.appointmentTime}
+                    times={appointmentTimes}
+                    dateError={errors.appointmentDate}
+                    timeError={errors.appointmentTime}
+                    onDateChange={handleDateChange}
+                    onTimeChange={handleTimeChange}
+                  />
+                </div>
               </div>
 
-              <FormField error={errors.customerEmail} htmlFor="customerEmail" label="Email address">
-                <input
-                  {...errorProps("customerEmail")}
-                  id="customerEmail"
-                  name="customerEmail"
-                  onChange={handleChange}
-                  type="email"
-                  value={values.customerEmail}
-                />
-              </FormField>
-
-              <FormField error={errors.customerPhone} htmlFor="customerPhone" label="Phone number">
-                <input
-                  {...errorProps("customerPhone")}
-                  id="customerPhone"
-                  name="customerPhone"
-                  onChange={handleChange}
-                  type="tel"
-                  value={values.customerPhone}
-                />
-              </FormField>
-
-              <FormField error={errors.barberName} htmlFor="barberName" label="Barber">
-                <select
-                  {...errorProps("barberName")}
-                  id="barberName"
-                  name="barberName"
-                  onChange={handleChange}
-                  value={values.barberName}
-                >
-                  <option value="">Select a barber</option>
-                  {barbers.map((barber) => (
-                    <option key={barber.id} value={barber.name}>
-                      {barber.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-
-              <FormField error={errors.service} htmlFor="service" label="Service">
-                <select
-                  {...errorProps("service")}
-                  disabled={!selectedBarber}
-                  id="service"
-                  name="service"
-                  onChange={handleChange}
-                  value={values.service}
-                >
-                  <option value="">{selectedBarber ? "Select a service" : "Choose a barber first"}</option>
-                  {selectedBarber?.services.map((service) => (
-                    <option key={service} value={service}>
-                      {service}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-
-              <FormField error={errors.appointmentDate} htmlFor="appointmentDate" label="Appointment date">
-                <input
-                  {...errorProps("appointmentDate")}
-                  id="appointmentDate"
-                  min={new Date().toISOString().split("T")[0]}
-                  name="appointmentDate"
-                  onChange={handleChange}
-                  type="date"
-                  value={values.appointmentDate}
-                />
-              </FormField>
-
-              <FormField error={errors.appointmentTime} htmlFor="appointmentTime" label="Appointment time">
-                <select
-                  {...errorProps("appointmentTime")}
-                  id="appointmentTime"
-                  name="appointmentTime"
-                  onChange={handleChange}
-                  value={values.appointmentTime}
-                >
-                  <option value="">Select a time</option>
-                  {appointmentTimes.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-
-            <button className={styles.submitButton} type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Request appointment"}
-            </button>
+              <button className={styles.submitButton} type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Booking..." : "Book appointment"}
+              </button>
+            </fieldset>
 
             {submitError && <p role="alert">{submitError}</p>}
           </form>

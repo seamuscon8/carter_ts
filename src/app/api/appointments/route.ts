@@ -31,9 +31,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await connectDB();
-
     const body = await request.json();
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ message: "Invalid appointment information." }, { status: 400 });
+    }
 
     const {
       customerName,
@@ -47,28 +49,64 @@ export async function POST(request: Request) {
       price,
     } = body;
 
-    const numericBarberId = Number(barberId);
+    // These four fields are always required.
+    if (
+      typeof customerName !== "string" ||
+      !customerName.trim() ||
+      typeof customerPhone !== "string" ||
+      customerPhone.replace(/\D/g, "").length !== 10 ||
+      typeof appointmentDate !== "string" ||
+      !appointmentDate.trim() ||
+      typeof appointmentTime !== "string" ||
+      !appointmentTime.trim()
+    ) {
+      return NextResponse.json(
+        { message: "A name, valid phone number, date, and time are required." },
+        { status: 400 },
+      );
+    }
+
     const parsedAppointmentDate = new Date(appointmentDate);
 
-    if (
-      !customerName ||
-      !customerEmail ||
-      !customerPhone ||
-      !appointmentDate ||
-      Number.isNaN(parsedAppointmentDate.getTime()) ||
-      !appointmentTime ||
-      !service ||
-      barberId === undefined ||
-      barberId === null ||
-      barberId === "" ||
-      !Number.isInteger(numericBarberId) ||
-      numericBarberId < 0 ||
-      !barberName ||
-      typeof price !== "number" ||
-      price < 0
-    ) {
-      return NextResponse.json({ message: "Required appointment information is missing or invalid." }, { status: 400 });
+    if (Number.isNaN(parsedAppointmentDate.getTime())) {
+      return NextResponse.json({ message: "Invalid appointment date." }, { status: 400 });
     }
+
+    // Optional text fields must be strings if provided.
+    if (
+      (customerEmail != null && typeof customerEmail !== "string") ||
+      (service != null && typeof service !== "string") ||
+      (barberName != null && typeof barberName !== "string")
+    ) {
+      return NextResponse.json({ message: "Email, service, and barber name must be text." }, { status: 400 });
+    }
+
+    // An omitted barber ID stays undefined instead of becoming 0.
+    const hasBarberId = barberId !== undefined && barberId !== null && barberId !== "";
+
+    let numericBarberId: number | undefined;
+
+    if (hasBarberId) {
+      if (
+        (typeof barberId !== "number" && typeof barberId !== "string") ||
+        (typeof barberId === "string" && !barberId.trim())
+      ) {
+        return NextResponse.json({ message: "Invalid barber ID." }, { status: 400 });
+      }
+
+      numericBarberId = Number(barberId);
+
+      if (!Number.isInteger(numericBarberId) || numericBarberId < 0) {
+        return NextResponse.json({ message: "Invalid barber ID." }, { status: 400 });
+      }
+    }
+
+    // Price is optional, but must be valid when provided.
+    if (price != null && (typeof price !== "number" || !Number.isFinite(price) || price < 0)) {
+      return NextResponse.json({ message: "Price must be a nonnegative number." }, { status: 400 });
+    }
+
+    await connectDB();
 
     const lastAppointment = await HaircutAppointmentModel.findOne().sort({
       appointmentNumber: -1,
@@ -78,21 +116,27 @@ export async function POST(request: Request) {
 
     const newAppointment = await HaircutAppointmentModel.create({
       appointmentNumber: nextAppointmentNumber,
-      customerName,
-      customerEmail,
-      customerPhone,
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.replace(/\D/g, ""),
       appointmentDate: parsedAppointmentDate,
-      appointmentTime,
-      service,
-      barberId: numericBarberId,
-      barberName,
+      appointmentTime: appointmentTime.trim(),
       status: "scheduled",
-      price,
+
+      // Missing or blank optional information is not stored.
+      customerEmail: customerEmail?.trim() || undefined,
+      service: service?.trim() || undefined,
+      barberId: numericBarberId,
+      barberName: barberName?.trim() || undefined,
+      price: price ?? undefined,
     });
 
     return NextResponse.json(newAppointment, { status: 201 });
   } catch (error) {
     console.error(error);
+
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ message: "Invalid JSON." }, { status: 400 });
+    }
 
     if (error instanceof Error && error.name === "ValidationError") {
       return NextResponse.json({ message: error.message }, { status: 400 });
